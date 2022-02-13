@@ -1,0 +1,111 @@
+---
+title: "Housing Data Assignment Week 9"
+author: "Kaylar Fullington"
+date: 02/13/2022
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+library(readxl)
+library(tidyverse)
+library(pastecs)
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(QuantPsyc)
+
+
+```{r echo = FALSE}
+# install.packages("readxl")
+# install.packages("pastecs")
+# install.packages("tidyverse")
+# install.packages("dplyr")
+# install.packages("QuantPsyc")
+# install.packages("car")
+
+library(readxl)
+housing <- read_excel("C:/Users/runek/dsc520/data/week-7-housing.xlsx")
+```
+
+```{r echo = FALSE}
+colnames(housing)[colnames(housing) == "Sale Price"] <- "Sale_Price"
+colnames(housing)[colnames(housing) == "Sale Date"] <- "Sale_Date"
+housing2 <- housing
+library(plyr)
+library(dplyr)
+housing2relevant <- housing2 %>% dplyr::select(-sale_reason, -sale_instrument, -sale_warning, -sitetype, -addr_full, -ctyname, -postalctyn, -lon, -lat, -current_zoning, -current_zoning, -present_use, -prop_type)
+housing2relevant$zip5 <- as.factor(housing2relevant$zip5)
+housing2relevant$building_grade <- as.factor(housing2relevant$building_grade)
+housing2relevant$year_built <- as.factor(housing2relevant$year_built)
+                                         
+```
+This will change the column name "Sale Price" to "Sale_Price" and the column "Sale Date" to "Sale_Date". I did this because when analyzing these particular variables, R couldn't comprehend the space between the two words and kicked errors. Also converted zip5 to a categorical variable because even though it appears as numbers, it defines categories of the locations of each house. I also created a new data frame (housing2relevant) that contains only the columns I'm interested in analyzing. I also converted zip5 and building_grade to factors since they are technically categorial variables instead of numeric.
+
+```{r echo = FALSE}
+sale_price_lot_lm <-  lm(Sale_Price ~ sq_ft_lot, data = housing2relevant)
+sale_price_various_lm <- lm(Sale_Price ~ sq_ft_lot + zip5 + bedrooms + year_built, data = housing2relevant)
+summary(sale_price_lot_lm)
+summary(sale_price_various_lm)
+```
+The R squared statistic for comparing the impact of Square Foot Lot on Sale Price is 0.01435 (about 1.4%) and the adjusted R squared statistic is 0.01428 (about 1.4%). R squared shows us how much variance is explained by the model compared to how much variance there is in the first place. It's the proportion of variance of the outcome variable that is shared by the predictor variable. So, based on these scores, Square Foot Lot explains that about 1.4% of the variance in Sale Price can be explained by Square Foot Lot. The R squared statistic for comparing the impact of multiple predictor variables is 0.1746 (about 17%) and the adjusted R squared statistic is 0.1673 (about 17%). This shows that in the second model, the selected predictor variables can account for about 17% of the variance in Sale Price.
+
+The standardized beta values (shown under Estimate) indicate the individual contribution of each parameter to the model. If the value is positive there is a positive relationship (as one increases, so does the other) between the variables. If the value is negative there is a negative relationship (as one increases, the other decreases) between the variables. For our second model, the b value for sq_ft_lot is 9.012e-1 (which translates to 0.9012). This value indicates a slightly positive relationship between Square Foot Lot and Sale Price. As one increases, so does the other. This follows our expectations that bigger houses will sell for higher prices. In one more example, the b value for bedrooms is 9.203+05 (which translates to 920,300). This is a strong positive relationship between number of bedrooms and Sale Price, as the bedrooms increase, so does the Sale Price. This also aligns with our expectations.
+
+```{r echo = FALSE}
+cor.test(housing2relevant$Sale_Price, housing2relevant$sq_ft_lot)
+cor.test(housing2relevant$bedrooms, housing2relevant$Sale_Price)
+housing2relevant$year_built <- as.numeric(housing2relevant$year_built)
+cor.test(housing2relevant$year_built, housing2relevant$Sale_Price)
+```
+I ran correlation tests on the numeric variables in my linear regression model with multiple variables. I will review only one of these tests for the sake of brevity. The results of the test on Sale_Price and sq_ft_lot show a p-value of less than .05, which indicates that the results are statistically significant. The confidence interval shows that we are 95% confident that the correlation between Sale Price and Square Foot Lot will fall between .0103 and 0.137.
+
+```{r echo = FALSE}
+sq_ft_aov <- aov(Sale_Price ~ sq_ft_lot - 1, housing2relevant)
+zip5_aov <- aov(Sale_Price ~ zip5 - 1, housing2relevant)
+bedrooms_aov <- aov(Sale_Price ~ bedrooms - 1, housing2relevant)
+year_built_aov <- aov(Sale_Price ~ year_built - 1, housing2relevant)
+
+anova(sale_price_lot_lm, sale_price_various_lm)
+
+```
+
+The value under Pr(>F) is 2.2e-16, or 2.2 with the decimal place moved 16 spaces to the left - a very tiny number, less than .001. This indicates that the second model enormously improved on what the first model told us.
+
+```{r echo = FALSE}
+library(car)
+housing2relevant$residuals <- resid(sale_price_various_lm)
+housing2relevant$standresidsuals <- rstandard(sale_price_various_lm)
+housing2relevant$studresiduals <- rstudent(sale_price_various_lm)
+housing2relevant$cooks.distance <- cooks.distance(sale_price_various_lm)
+housing2relevant$dfbeta <- dfbeta(sale_price_various_lm)
+housing2relevant$dffits <- dffits(sale_price_various_lm)
+housing2relevant$leverage <- hatvalues(sale_price_various_lm)
+housing2relevant$covariance.ratios <- covratio(sale_price_various_lm)
+write.table(housing2relevant, "Housing Data wtih Diagnostics.dat", sep = "\t", row.names = FALSE)
+housing2relevant$large.residual <- housing2relevant$standresidsuals > 2 | housing2relevant$standresidsuals < -2
+sum(housing2relevant$large.residual)
+housing2relevant[housing2relevant$large.residual, c("cooks.distance", "leverage", "covariance.ratios")]
+dwt(sale_price_various_lm)
+
+```
+Somehow we have no variables that have large residuals...The assumption of independence has been met because it is greater than one and less than three. The p-value of 0 confirms the conclusion that this is significant.
+
+```{r echo = FALSE}
+vif(sale_price_various_lm)
+1/vif(sale_price_various_lm)
+mean(vif(sale_price_various_lm))
+
+```
+The mean of 10.27 indicates that the model is very likely biased because it is substantially greater than 1. Seems like year_built is very off.
+
+```{r echo = FALSE}
+plot(sale_price_various_lm)
+hist(housing2relevant$studresiduals)
+
+```
+
+Based on this analysis, the linear regression model I created is biased. 
+
